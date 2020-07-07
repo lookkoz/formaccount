@@ -29,20 +29,12 @@ func init() {
 /** POSITVIE SCENARIOS **/
 
 func TestList(t *testing.T) {
-	assertForSuccessResponse := func(res interface{}, err error) {
-		if err != nil {
-			t.Fatalf("error returned: %s", err)
-		}
-		if res == nil {
-			t.Error("Account list is empty")
-		}
-		if reflect.TypeOf(res).String() != "[]*account.Account" {
-			t.Errorf("Returned result is not as expected type, have %s", reflect.TypeOf(res).String())
-		}
-	}
-
 	accounts, err := accountService.List(account.Page{})
-	assertForSuccessResponse(accounts, err)
+	assertForSuccessResponse(t, accounts, err)
+
+	if reflect.TypeOf(accounts).String() != "[]*account.Account" {
+		t.Errorf("Returned result is not as expected type, have %T", accounts)
+	}
 }
 
 func TestListPagination(t *testing.T) {
@@ -57,7 +49,7 @@ func TestListPagination(t *testing.T) {
 
 	pageSize := 2
 	page := account.Page{}
-	page.Size(pageSize).Number(1)
+	page.Size(pageSize).Number(0)
 	accounts, err := accountService.List(page)
 
 	if err != nil {
@@ -77,20 +69,8 @@ func TestListPagination(t *testing.T) {
 	removeAccounts(ids, t)
 }
 
-func TestGet(t *testing.T) {
+func TestFetch(t *testing.T) {
 	accountService.Delete("ad27e265-9605-4b4b-a0e5-3003ea9cc4dc", 0)
-
-	assertForSuccessResponse := func(res interface{}, err error) {
-		if err != nil {
-			t.Fatalf("error returned: %s", err)
-		}
-		if res == nil {
-			t.Errorf("Returned result is empty")
-		}
-		if reflect.TypeOf(res).String() != "*account.Account" {
-			t.Errorf("Returned result is not as expected type, have %s", reflect.TypeOf(res).String())
-		}
-	}
 
 	uuid := "ad27e265-9605-4b4b-a0e5-3003ea9cc4dc"
 	accountObj := getNewAccount(t, uuid)
@@ -99,25 +79,34 @@ func TestGet(t *testing.T) {
 		t.Fatalf("Could not create account: %s", err)
 	}
 	account, err := accountService.Fetch(uuid)
-	assertForSuccessResponse(account, err)
+	assertForSuccessResponse(t, account, err)
+
+	if reflect.TypeOf(account).String() != "*account.Account" {
+		t.Errorf("Returned result is not as expected type, have %T", account)
+	}
 }
 func TestCreate(t *testing.T) {
-	assertForSuccessResponse := func(res interface{}, err error) {
-		if err != nil {
-			t.Fatalf("error returned: %s", err)
-		}
-		if res == nil {
-			t.Errorf("Returned result is empty")
-		}
-		if reflect.TypeOf(res).String() != "*account.Account" {
-			t.Errorf("Returned result is not as expected type, have %s", reflect.TypeOf(res).String())
-		}
-	}
-
 	accountObj := getNewAccount(t, "fd80a4ee-c032-11ea-9af1-23a17806fa35")
 	accountCreated, err := accountService.Create(accountObj)
 	t.Logf("Created %v", accountCreated)
-	assertForSuccessResponse(accountCreated, err)
+	assertForSuccessResponse(t, accountCreated, err)
+}
+
+func TestCreateValues(t *testing.T) {
+
+	accountObj := deeelyNestedAccountJSON("ad33e265-9605-4b4b-a0e5-3003ea9cc422", t)
+	accountCreated, err := accountService.Create(accountObj)
+	if err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+
+	accountFetched, err := accountService.Fetch(accountCreated.ID)
+
+	if !reflect.DeepEqual(accountFetched, accountCreated) {
+		t.Error("Created elemets are not equal")
+	}
+
+	removeAccounts([]string{"ad33e265-9605-4b4b-a0e5-3003ea9cc422"}, t)
 }
 
 func TestDelete(t *testing.T) {
@@ -162,6 +151,17 @@ func TestWrongEndpointError(t *testing.T) {
 	_, err := accountService.Fetch("fd80a4ee-c032-11ea-0000-23a17806fa00")
 	if err == nil {
 		t.Error("Expected error")
+	}
+}
+
+func assertForSuccessResponse(t *testing.T, res interface{}, err error) {
+	t.Helper()
+
+	if err != nil {
+		t.Fatalf("error returned: %s", err)
+	}
+	if res == nil {
+		t.Errorf("Returned result is empty")
 	}
 }
 
@@ -229,4 +229,47 @@ func removeAccounts(ids []string, t *testing.T) {
 			t.Fatal("Cannot remove account: ", err)
 		}
 	}
+}
+
+func deeelyNestedAccountJSON(uuid string, t *testing.T) account.Account {
+	accountJSON := `{
+		  "type": "accounts",
+		  "id": "` + uuid + `",
+		  "organisation_id": "eb0bd6f5-c3f5-44b2-b677-acd23cdde73c",
+		  "attributes": {
+			"country": "GB",
+			"base_currency": "GBP",
+			"account_number": "41426819",
+			"bank_id": "400300",
+			"bank_id_code": "GBDSC",
+			"bic": "NWBKGB22",
+			"name": [
+			  "Samantha Holder"
+			],
+			"private_identification": {
+			  "birth_date": "2017-07-23",
+			  "birth_country": "GB",
+			  "identification": "13YH458762",
+			  "address": ["10 Avenue des Champs"],
+			  "city": "London",
+			  "country": "GB"
+			}
+		  },
+		  "relationships": {
+			"master_account": {
+			  "data": [{
+				"type": "accounts",
+				"id": "a52d13a4-f435-4c00-cfad-f5e7ac5972df"
+			  }]
+			}
+		  }
+		}`
+
+	var accountObj account.Account
+	err := json.Unmarshal([]byte(accountJSON), &accountObj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return accountObj
 }
