@@ -1,0 +1,283 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">formaccount/client/client.go (90.1%)</option>
+				
+				<option value="file1">formaccount/client/error.go (0.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package client
+
+import (
+        "bytes"
+        "encoding/json"
+        "fmt"
+        "formaccount/account"
+        "io"
+        "net/http"
+        "time"
+)
+
+// var ErrNoRows = errors.New("form3.client: no rows in result set")
+// var ErrNotFound = errors.New("form3.client: not found")
+// var ErrConn = errors.New("form3.client: rest service is down")
+
+const (
+        ClientName    = "form3-account-client"
+        ClientVersion = "v1"
+
+        DefaultHost = "http://localhost:8080"
+        BasePath    = "/v1/organisation/accounts"
+)
+
+type Client struct {
+        httpClient *http.Client
+        baseURL    string
+        UserAgent  string
+}
+
+func NewClient(accountServiceEndpoint string) *Client <span class="cov8" title="1">{
+        tr := &amp;http.Transport{
+                MaxIdleConns:       5,
+                IdleConnTimeout:    10 * time.Second,
+                DisableCompression: true,
+        }
+        client := &amp;http.Client{Transport: tr}
+
+        return &amp;Client{
+                httpClient: client,
+                UserAgent:  ClientName,
+                baseURL:    accountServiceEndpoint,
+        }
+}</span>
+
+// List returns list of accounts
+func (c *Client) List(page account.Page) ([]*account.Account, error) <span class="cov8" title="1">{
+        reqURL := fmt.Sprintf("%s/v1/organisation/accounts%s", c.baseURL, page.String())
+
+        req, err := c.getRequest(http.MethodGet, reqURL, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">resp, err := c.doRequest(req, 200)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        var accountsResponse account.AccountsResponse
+        err = json.NewDecoder(resp.Body).Decode(&amp;accountsResponse)
+        return accountsResponse.Accounts, err</span>
+}
+
+// Fetch returns one account
+func (c Client) Fetch(id string) (*account.Account, error) <span class="cov8" title="1">{
+        reqURL := fmt.Sprintf("%s/v1/organisation/accounts/%s", c.baseURL, id)
+
+        req, err := c.getRequest(http.MethodGet, reqURL, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">resp, err := c.doRequest(req, 200)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        var accountResponse account.AccountResponse
+        err = json.NewDecoder(resp.Body).Decode(&amp;accountResponse)
+        return accountResponse.AccountObject, err</span>
+}
+
+func (c Client) Create(accountObj account.Account) (*account.Account, error) <span class="cov8" title="1">{
+        reqURL := fmt.Sprintf("%s/v1/organisation/accounts", c.baseURL)
+
+        requestBody := account.AccountRequest{Account: &amp;accountObj}
+        req, err := c.getRequest(http.MethodPost, reqURL, requestBody)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">resp, err := c.doRequest(req, 201)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        var accountResponse account.AccountResponse
+        err = json.NewDecoder(resp.Body).Decode(&amp;accountResponse)
+        return accountResponse.AccountObject, err</span>
+}
+
+func (c Client) Delete(id string, version int64) error <span class="cov8" title="1">{
+        reqURL := fmt.Sprintf(c.baseURL+"/v1/organisation/accounts/%s?version=%d", id, version)
+        req, err := c.getRequest(http.MethodDelete, reqURL, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">resp, err := c.doRequest(req, 204)
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        return nil</span>
+}
+
+func (c *Client) getRequest(method, url string, requestBody interface{}) (*http.Request, error) <span class="cov8" title="1">{
+        body, err := getJsonRequestBody(requestBody)
+        req, err := http.NewRequest(method, url, body)
+
+        if body != nil </span><span class="cov8" title="1">{
+                req.Header.Set("Content-Type", "application/api+json")
+        }</span>
+
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Accept", "application/api+json")
+        req.Header.Set("User-Agent", c.UserAgent)
+
+        return req, nil</span>
+}
+
+func (c *Client) doRequest(req *http.Request, expectedStatus int) (*http.Response, error) <span class="cov8" title="1">{
+        resp, err := c.httpClient.Do(req)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">if resp.StatusCode != expectedStatus </span><span class="cov8" title="1">{
+                var cErr ClientError
+                err = json.NewDecoder(resp.Body).Decode(&amp;cErr)
+                cErr.HttpStatusCode = resp.StatusCode
+                return nil, cErr
+        }</span>
+
+        <span class="cov8" title="1">return resp, nil</span>
+}
+
+func getJsonRequestBody(requestBody interface{}) (io.Reader, error) <span class="cov8" title="1">{
+        var body io.Reader
+        if requestBody != nil </span><span class="cov8" title="1">{
+                buffer, err := json.Marshal(requestBody)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("JSON Enc error: %s", err)
+                }</span>
+                <span class="cov8" title="1">body = bytes.NewBuffer(buffer)</span>
+        }
+        <span class="cov8" title="1">return body, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package client
+
+import "fmt"
+
+type ClientError struct {
+        HttpStatusCode int
+        Message        string `json:"error_message"`
+}
+
+func (x ClientError) Error() string <span class="cov0" title="0">{
+        return fmt.Sprintf("%s ERR: %s (%d)", ClientName, x.Message, x.HttpStatusCode)
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

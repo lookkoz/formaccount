@@ -3,13 +3,10 @@ package client
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"formaccount/account"
 	"io"
 	"net/http"
-	"net/url"
-	"strconv"
 	"time"
 )
 
@@ -17,33 +14,21 @@ import (
 // var ErrNotFound = errors.New("form3.client: not found")
 // var ErrConn = errors.New("form3.client: rest service is down")
 
-type ClientError struct {
-	HttpStatusCode int
-	Message        string `json:"error_message"`
-}
-
-func (x ClientError) Error() string {
-	return fmt.Sprintf("%s ERR: %s (%d)", ClientName, x.Message, x.HttpStatusCode)
-}
-
 const (
 	ClientName    = "form3-account-client"
 	ClientVersion = "v1"
 
-	DefaultHostname = "localhost"
-	DefaultPort     = "8080"
-	UserAgentName   = ClientName
-	DefaultScheme   = "http"
-	BasePath        = "/v1/organisation/accounts"
+	DefaultHost = "http://localhost:8080"
+	BasePath    = "/v1/organisation/accounts"
 )
 
 type Client struct {
 	httpClient *http.Client
-	BaseURL    *url.URL
+	baseURL    string
 	UserAgent  string
 }
 
-func NewClient(hostname, port string) *Client {
+func NewClient(accountServiceEndpoint string) *Client {
 	tr := &http.Transport{
 		MaxIdleConns:       5,
 		IdleConnTimeout:    10 * time.Second,
@@ -51,46 +36,28 @@ func NewClient(hostname, port string) *Client {
 	}
 	client := &http.Client{Transport: tr}
 
-	url := getURL(hostname, port)
-
 	return &Client{
 		httpClient: client,
-		UserAgent:  UserAgentName,
-		BaseURL:    url,
+		UserAgent:  ClientName,
+		baseURL:    accountServiceEndpoint,
 	}
-}
-
-func getURL(hostname, port string) *url.URL {
-	if port != "" {
-		port = ":" + port
-	}
-
-	url := &url.URL{
-		Host:   hostname + port,
-		Scheme: DefaultScheme,
-		Path:   BasePath,
-	}
-
-	return url
 }
 
 // List returns list of accounts
-func (c *Client) List() ([]*account.Account, error) {
-	c.BaseURL.Path = "/v1/organisation/accounts"
-	u := c.BaseURL.ResolveReference(c.BaseURL)
+func (c *Client) List(page account.Page) ([]*account.Account, error) {
+	reqURL := fmt.Sprintf("%s/v1/organisation/accounts%s", c.baseURL, page.String())
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	req, err := c.getRequest(http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.api+json")
-	req.Header.Set("User-Agent", c.UserAgent)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req, 200)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
 	var accountsResponse account.AccountsResponse
 	err = json.NewDecoder(resp.Body).Decode(&accountsResponse)
 	return accountsResponse.Accounts, err
@@ -98,87 +65,62 @@ func (c *Client) List() ([]*account.Account, error) {
 
 // Fetch returns one account
 func (c Client) Fetch(id string) (*account.Account, error) {
-	c.BaseURL.Path = "/v1/organisation/accounts/" + id
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL.String(), nil)
+	reqURL := fmt.Sprintf("%s/v1/organisation/accounts/%s", c.baseURL, id)
+
+	req, err := c.getRequest(http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.api+json")
-	req.Header.Set("User-Agent", c.UserAgent)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req, 200)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		var cErr ClientError
-		err = json.NewDecoder(resp.Body).Decode(&cErr)
-		cErr.HttpStatusCode = resp.StatusCode
-		return nil, cErr
-	}
-
 	var accountResponse account.AccountResponse
 	err = json.NewDecoder(resp.Body).Decode(&accountResponse)
-	return accountResponse.Account, err
+	return accountResponse.AccountObject, err
 }
 
 func (c Client) Create(accountObj account.Account) (*account.Account, error) {
-	c.BaseURL.Path = "/v1/organisation/accounts/"
+	reqURL := fmt.Sprintf("%s/v1/organisation/accounts", c.baseURL)
 
 	requestBody := account.AccountRequest{Account: &accountObj}
-	req, err := c.getRequest(http.MethodPost, c.BaseURL.String(), requestBody)
+	req, err := c.getRequest(http.MethodPost, reqURL, requestBody)
+	if err != nil {
+		return nil, err
+	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req, 201)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 201 {
-		var response account.Response
-		err = json.NewDecoder(resp.Body).Decode(&response)
-		return nil, errors.New(response.ErrorMessage)
-	}
-
 	var accountResponse account.AccountResponse
 	err = json.NewDecoder(resp.Body).Decode(&accountResponse)
-	return accountResponse.Account, err
+	return accountResponse.AccountObject, err
 }
 
 func (c Client) Delete(id string, version int64) error {
-	c.BaseURL.Path = "/v1/organisation/accounts"
-	url := c.BaseURL
-	url.Query().Set("version", strconv.Itoa(int(version)))
-
-	req, err := http.NewRequest(http.MethodDelete, url.String(), nil)
+	reqURL := fmt.Sprintf(c.baseURL+"/v1/organisation/accounts/%s?version=%d", id, version)
+	req, err := c.getRequest(http.MethodDelete, reqURL, nil)
 	if err != nil {
 		return err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req, 204)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode == 204 {
-		return nil
-	}
 
 	return nil
 }
 
 func (c *Client) getRequest(method, url string, requestBody interface{}) (*http.Request, error) {
-	var body io.Reader
-	if requestBody != nil {
-		buffer, err := json.Marshal(requestBody)
-		if err != nil {
-			return nil, fmt.Errorf("JSON encoding error: %s", err)
-		}
-		body = bytes.NewBuffer(buffer)
-	}
+	body, err := getJsonRequestBody(requestBody)
 	req, err := http.NewRequest(method, url, body)
 
 	if body != nil {
@@ -191,5 +133,33 @@ func (c *Client) getRequest(method, url string, requestBody interface{}) (*http.
 	req.Header.Set("Accept", "application/api+json")
 	req.Header.Set("User-Agent", c.UserAgent)
 
-	return req, err
+	return req, nil
+}
+
+func (c *Client) doRequest(req *http.Request, expectedStatus int) (*http.Response, error) {
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != expectedStatus {
+		var cErr ClientError
+		err = json.NewDecoder(resp.Body).Decode(&cErr)
+		cErr.HttpStatusCode = resp.StatusCode
+		return nil, cErr
+	}
+
+	return resp, nil
+}
+
+func getJsonRequestBody(requestBody interface{}) (io.Reader, error) {
+	var body io.Reader
+	if requestBody != nil {
+		buffer, err := json.Marshal(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("JSON Enc error: %s", err)
+		}
+		body = bytes.NewBuffer(buffer)
+	}
+	return body, nil
 }

@@ -7,9 +7,9 @@ type Response struct {
 
 type AccountResponse struct {
 	Response
-	Account *Account `json:"data"`
-	Links   struct {
-		Self string `json:"data"`
+	AccountObject *Account `json:"data"`
+	Links         struct {
+		Self string `json:"self"`
 	} `json:"links"`
 }
 
