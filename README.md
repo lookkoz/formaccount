@@ -1,4 +1,4 @@
-Łukasz Kozik - little proffesional experience with GoLang 
+
 
 GO client library to access our fake [account API](http://api-docs.form3.tech/api.html#organisation-accounts) service.
 
